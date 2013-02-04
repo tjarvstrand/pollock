@@ -1,0 +1,12 @@
+{application, pollock,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { pollock_app, []}},
+  {env, []}
+ ]}.

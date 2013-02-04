@@ -1,0 +1,4 @@
+language: erlang
+otp-release:
+ - R14B04
+script: "make -s test"
