@@ -34,7 +34,8 @@
          free_vars/2,
          get_abstract_code/1,
          parse_expressions/1,
-         parse_forms/1]).
+         parse_forms/1,
+         split_forms_at_function/3]).
 
 %%%_* Defines ==================================================================
 
@@ -85,7 +86,7 @@ free_vars(Text, StartLine) ->
 %%------------------------------------------------------------------------------
 get_abstract_code(Module) ->
   {Module, Bin, _File} = code:get_object_code(Module),
-  {ok, {Module, {abstract_code, {_Vsn, [Abstract]}}}} =
+  {ok, {Module, [{abstract_code, {_Vsn, Abstract}}]}} =
     beam_lib:chunks(Bin, [abstract_code]),
   Abstract.
 
@@ -108,6 +109,28 @@ parse_expressions(String) ->
   case erl_parse:parse_exprs(scan(String)) of
     {ok, _}    = Res -> Res;
     {error, _} = Err -> Err
+  end.
+
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Return Abstract split into three parts. Everything before the function
+%% F/A, the function's abstract code, and everything after
+%% the function's abstract code.
+-spec split_forms_at_function(Abstract::[erl_parse:abstract_form()],
+                                F::atom(),
+                                A::integer()) ->
+                                   {[erl_parse:abstract_form()],
+                                    [erl_parse:abstract_form()],
+                                    [erl_parse:abstract_form()]}.
+split_forms_at_function(Abstract, F, A) ->
+  PredF =
+    fun({function, _, F0, A0, _}) when F0 =:= F andalso A0 =:= A -> false;
+       (_)                                                       -> true
+    end,
+  case lists:splitwith(PredF, Abstract) of
+    {_, []}                     -> {error, not_found};
+    {Pre, [FunAbstract | Post]} -> {Pre, [FunAbstract], Post}
   end.
 
 %%%_* Internal functions =======================================================
@@ -140,6 +163,16 @@ get_form(Toks) ->
 
 %%%_* Unit tests ===============================================================
 
+split_forms_at_function_test_() ->
+  Forms = test_file_forms("minimal_mod"),
+  [
+   ?_assertEqual({error, not_found}, split_forms_at_function([], foo, 1)),
+   ?_assertEqual({error, not_found}, split_forms_at_function(Forms, foo, 1)),
+   ?_assertEqual({error, not_found}, split_forms_at_function(Forms, min, 1)),
+   ?_assertMatch({[_], [_], []}, split_forms_at_function(Forms, min, 0))
+  ].
+
+
 parse_expressions_test_() ->
   [?_assertMatch({error, {_, erl_parse, _}},
                  parse_expressions("foo(fun() -> ok end)")),
@@ -161,6 +194,13 @@ free_vars_test_() ->
   ].
 
 %%%_* Test helpers =============================================================
+
+test_file_forms(File) ->
+  Path = filename:join([code:priv_dir(pollock), File]),
+  {ok, Bin} = file:read_file(Path),
+  {ok, Forms} = parse_forms(unicode:characters_to_list(Bin)),
+  Forms.
+
 
 %%%_* Emacs ====================================================================
 %%% Local Variables:
